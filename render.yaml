@@ -9,5 +9,3 @@ services:
         value: 0.0.0.0
       - key: OAI_KEY
         sync: false
-      - key: DEMO_PASSWORD
-        sync: false

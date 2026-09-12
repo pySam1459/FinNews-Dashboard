@@ -22,14 +22,13 @@ GitHub Pages cannot be used because the dashboard needs a server-side OpenAI key
 and a local OpenMarkets MCP process.
 
 This repository includes a Render Blueprint. In Render, choose **New → Blueprint**,
-connect this GitHub repository, and select `render.yaml`. Add these secrets in the
-Render environment settings (never commit them):
+connect this GitHub repository, and select `render.yaml`. Add this secret in the
+Render environment settings (never commit it):
 
 - `OAI_KEY` — the OpenAI API key used for Luna requests.
-- `DEMO_PASSWORD` — recommended shared password; visitors receive a browser sign-in
-  prompt. Omit it only if you deliberately want anyone on the internet to spend
-  your API credits.
 
 Render creates an `onrender.com` URL after deployment and redeploys from future
-pushes to `main`. Its free plan may have a cold start. See
+pushes to `main`. Its free plan may have a cold start. If the prepaid credit or
+spend limit is exhausted, the dashboard clearly pauses new analyses rather than
+retrying them. See
 [Render's FastAPI deployment guide](https://render.com/docs/deploy-fastapi).

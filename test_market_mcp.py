@@ -1,22 +1,20 @@
 """Offline contract checks: uv run news_dashboard.py --self-test."""
 import asyncio
-import base64
 import os
 from types import SimpleNamespace
 import market_mcp as m
 import news_dashboard as dashboard
 
 def run():
-    old_hosts, old_render, old_password = (os.getenv('ALLOWED_HOSTS'), os.getenv('RENDER_EXTERNAL_HOSTNAME'), os.getenv('DEMO_PASSWORD'))
+    old_hosts, old_render = os.getenv('ALLOWED_HOSTS'), os.getenv('RENDER_EXTERNAL_HOSTNAME')
     try:
         os.environ['ALLOWED_HOSTS'] = 'demo.example.com'
         os.environ['RENDER_EXTERNAL_HOSTNAME'] = 'finnews.onrender.com'
-        os.environ['DEMO_PASSWORD'] = 'share-me'
         assert {'localhost', 'demo.example.com', 'finnews.onrender.com'} <= dashboard.allowed_hosts()
-        assert dashboard.demo_authorized('Basic ' + base64.b64encode(b'demo:share-me').decode())
-        assert not dashboard.demo_authorized('Basic bad')
+        assert 'credit limit' in dashboard.openai_error_message(SimpleNamespace(code='credit_balance_exhausted', type='insufficient_quota')).lower()
+        assert 'rate-limiting' in dashboard.openai_error_message(SimpleNamespace(code='slow_down', type='rate_limit_error', status_code=429)).lower()
     finally:
-        for key, value in {'ALLOWED_HOSTS': old_hosts, 'RENDER_EXTERNAL_HOSTNAME': old_render, 'DEMO_PASSWORD': old_password}.items():
+        for key, value in {'ALLOWED_HOSTS': old_hosts, 'RENDER_EXTERNAL_HOSTNAME': old_render}.items():
             if value is None:
                 os.environ.pop(key, None)
             else:

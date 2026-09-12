@@ -51,7 +51,7 @@ error states. This is a local personal research prototype.
 
 Use the GitHub repository as source control and deploy the included `render.yaml`
 as a Render Blueprint. GitHub Pages cannot run this FastAPI/OpenMarkets backend.
-Set `OAI_KEY` only in Render's secret environment settings. `DEMO_PASSWORD` is an
-optional HTTP Basic Auth password for a shareable demo link and is recommended to
-prevent uninvited visitors spending the API budget. Render supplies its hostname
-to the app; add custom domains through `ALLOWED_HOSTS` if needed.
+Set `OAI_KEY` only in Render's secret environment settings. If the prepaid credit
+or spend limit is exhausted, the dashboard visibly pauses new analyses rather than
+retrying them. Render supplies its hostname to the app; add custom domains through
+`ALLOWED_HOSTS` if needed.

@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import re
-import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -77,17 +76,15 @@ def allowed_hosts():
         hosts.update(host.strip().lower() for host in os.getenv(name, '').split(',') if host.strip())
     return hosts
 
-def demo_authorized(header):
-    password = os.getenv('DEMO_PASSWORD')
-    if not password:
-        return True
-    import base64
-    try:
-        scheme, token = header.split(' ', 1)
-        supplied = base64.b64decode(token, validate=True).decode().split(':', 1)[1]
-    except (ValueError, UnicodeDecodeError):
-        return False
-    return scheme.lower() == 'basic' and secrets.compare_digest(supplied, password)
+
+def openai_error_message(exc):
+    code = getattr(exc, 'code', None)
+    if code in {'credit_balance_exhausted', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'organization_usage_limit_exceeded'} or getattr(exc, 'type', None) == 'insufficient_quota':
+        return 'This shared demo has reached its OpenAI credit limit. New analyses are paused.'
+    return {401: 'OpenAI rejected the API key.', 403: 'This API key cannot access the selected model.',
+            404: 'gpt-5.6-luna is not available for this API project.',
+            429: 'OpenAI is temporarily rate-limiting requests. Please try again shortly.'}.get(
+                getattr(exc, 'status_code', None), 'OpenAI request failed. Please retry.')
 
 def public_get(url):
     # Only fetch known publisher URLs; never follow redirects to arbitrary hosts.
@@ -109,9 +106,6 @@ async def public_only(request: Request, call_next):
     host = request.headers.get('host', '').split(':', 1)[0].lower().rstrip('.')
     if host not in allowed_hosts():
         return JSONResponse({'detail': 'Host not allowed'}, status_code=403)
-    if request.url.path != '/api/health' and not demo_authorized(request.headers.get('authorization', '')):
-        return JSONResponse({'detail': 'Demo password required'}, status_code=401,
-                            headers={'WWW-Authenticate': 'Basic realm="FinNews demo"'})
     if request.method == 'POST':
         origin = request.headers.get('origin')
         origin_host = urlparse(origin).hostname if origin else host
@@ -231,11 +225,7 @@ def analysis_events(selection):
                 raise HTTPException(502, 'The model did not return a complete analysis. Please retry.')
             result = response.output_parsed.model_dump()
         except APIError as exc:
-            code = getattr(exc, 'status_code', None)
-            message = {401: 'OpenAI rejected the API key.', 403: 'This API key cannot access the selected model.',
-                       404: 'gpt-5.6-luna is not available for this API project.',
-                       429: 'OpenAI quota or rate limit reached. Check billing or try later.'}.get(code, 'OpenAI request failed. Please retry.')
-            raise HTTPException(502, message) from None
+            raise HTTPException(502, openai_error_message(exc)) from None
         # Validate identifiers and require extracted event evidence to occur in the supplied text.
         result['securities'] = list({s['ticker'].upper(): {**s, 'ticker': s['ticker'].upper()} for s in result['securities']
                                     if re.fullmatch(r'[A-Za-z0-9^][A-Za-z0-9.^=\-]{0,19}', s['ticker'])}.values())
@@ -262,8 +252,8 @@ def analysis_events(selection):
                 if not kept:
                     raise ValueError('No verified candidates')
                 result.update(summary=final['summary'], securities=list(kept.values()), verification='Refined by Luna using OpenMarkets MCP evidence.')
-            except (APIError, ValueError):
-                result['verification'] = 'Final refinement unavailable; original hypotheses retained with MCP evidence below.'
+            except (APIError, ValueError) as exc:
+                result['verification'] = openai_error_message(exc) if isinstance(exc, APIError) else 'Final refinement unavailable; original hypotheses retained with MCP evidence below.'
         normalize = lambda s: ' '.join(s.split()).casefold()
         date_words = r'\b(?:\d{4}|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|yesterday|tomorrow|today|ago|after|before|am|pm)\b|\d{1,2}:\d{2}'
         result['events'] = [e for e in result['events'] if e['quote'] and normalize(e['quote']) in normalize(text)
