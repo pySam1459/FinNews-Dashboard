@@ -23,9 +23,11 @@ it cannot introduce new symbols. There is no iterative research loop. The UI sho
 successful and failed MCP checks. Each new analysis uses up to two API requests;
 results are cached in memory until server restart.
 
-`market_mcp.py` launches one local `uvx openmarkets@latest` stdio server using the
-Python MCP SDK v1. This is independent of the Codex connection; `uvx` must be on
-PATH, and first startup may download dependencies. The backend orchestrates tools
+`market_mcp.py` launches one local OpenMarkets stdio server using the Python MCP
+SDK v1. Docker installs the server during the build, so deployment startup does
+not download its dependencies. Local runs use the installed `openmarkets` command
+when available, otherwise `uvx openmarkets@latest`. This is independent of the
+Codex connection. The backend orchestrates tools
 for Luna's candidates, rather than exposing unrestricted tool access to the model.
 Profiles are cached for one hour; quotes/history for 55 seconds and reused by
 charts. Luna receives compact history statistics, not full chart arrays.

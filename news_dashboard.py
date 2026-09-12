@@ -130,7 +130,8 @@ def index():
 @app.get('/api/health')
 def health():
     return {'keyConfigured': bool(os.getenv('OAI_KEY')), 'model': MODEL,
-            'mcpConnected': market_mcp.session is not None, 'mcpTools': market_mcp.TOOLS}
+            'mcpConnected': market_mcp.session is not None, 'mcpTools': market_mcp.TOOLS,
+            'mcpStartupError': market_mcp.startup_error}
 
 @app.get('/api/news')
 def news():

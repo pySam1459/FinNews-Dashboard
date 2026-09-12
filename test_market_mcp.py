@@ -31,6 +31,7 @@ def run():
     assert m.evidence(records)[0]['data']['periodChangePct'] == 10
     assert m.chart_data('XOM', records[:1])['quote'] == 110
     assert 'error' in m.chart_data('XOM', [])
+    assert m.chart_data('XOM', [{'ticker': 'XOM', 'tool': 'get_history', 'error': 'MCP is not connected'}])['error'] == 'MCP is not connected'
     try:
         m.fetch_batch(['XOM'], ['delete'])
         raise AssertionError('Unknown tool accepted')

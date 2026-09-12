@@ -1,6 +1,7 @@
 """One local OpenMarkets MCP session, shared by analysis and chart refreshes."""
 import asyncio
 import json
+import logging
 import math
 import shutil
 import time
@@ -12,21 +13,27 @@ from mcp.client.stdio import stdio_client
 
 TOOLS = ('get_curated_info', 'get_fast_info', 'get_history')
 session = None
+startup_error = None
 loop = None
 cache = {}
 
 @asynccontextmanager
 async def lifespan(app):
-    global session, loop
+    global session, loop, startup_error
     loop = asyncio.get_running_loop()
+    startup_error = None
     async with AsyncExitStack() as stack:
         try:
+            installed = shutil.which('openmarkets')
             streams = await stack.enter_async_context(stdio_client(StdioServerParameters(
-                command=shutil.which('uvx') or 'uvx', args=['openmarkets@latest'])))
+                command=installed or shutil.which('uvx') or 'uvx',
+                args=[] if installed else ['openmarkets@latest'])))
             session = await stack.enter_async_context(ClientSession(*streams))
             await asyncio.wait_for(session.initialize(), 40)
-        except Exception:
+        except Exception as exc:
             session = None
+            startup_error = f'OpenMarkets failed to initialise ({type(exc).__name__}). See server startup logs.'
+            logging.exception('OpenMarkets MCP startup failed')
         yield
         session = None
 
@@ -38,7 +45,8 @@ async def call(tool, ticker):
     result = {'ticker': ticker, 'tool': tool}
     try:
         if session is None:
-            raise RuntimeError('MCP unavailable')
+            result['error'] = startup_error or 'OpenMarkets MCP is not connected.'
+            return result
         args = {'ticker': ticker}
         if tool == 'get_history':
             args.update(period='1mo', interval='30m')
@@ -90,7 +98,7 @@ def chart_data(ticker, records):
             continue
     bars.sort(key=lambda b: b['t'])
     if not bars:
-        return {'ticker': ticker, 'error': 'No price bars returned by OpenMarkets.'}
+        return {'ticker': ticker, 'error': parts.get('get_history', {}).get('error') or 'No price bars returned by OpenMarkets.'}
     return {'ticker': ticker, 'bars': bars, 'currency': fast.get('currency') or 'Currency unavailable',
             'exchangeTimezone': fast.get('timezone', 'UTC'), 'exchange': fast.get('exchange'),
             'quote': fast.get('lastPrice') or bars[-1]['c'], 'quoteTime': None,
