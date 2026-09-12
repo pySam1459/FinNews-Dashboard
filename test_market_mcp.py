@@ -13,6 +13,8 @@ def run():
         assert {'localhost', 'demo.example.com', 'finnews.onrender.com'} <= dashboard.allowed_hosts()
         assert 'credit limit' in dashboard.openai_error_message(SimpleNamespace(code='credit_balance_exhausted', type='insufficient_quota')).lower()
         assert 'rate-limiting' in dashboard.openai_error_message(SimpleNamespace(code='slow_down', type='rate_limit_error', status_code=429)).lower()
+        assert dashboard.history_tickers([{'ticker': 'XOM', 'tool': 'get_history', 'data': {'bars': 286}},
+                                          {'ticker': '2GO', 'tool': 'get_history', 'error': 'No data'}]) == {'XOM'}
     finally:
         for key, value in {'ALLOWED_HOSTS': old_hosts, 'RENDER_EXTERNAL_HOSTNAME': old_render}.items():
             if value is None:
