@@ -36,6 +36,17 @@ Checks: `uv run news_dashboard.py --self-test` (offline) and
 `uv run news_dashboard.py --check-prices` (live MCP, no OpenAI credits).
 
 BBC business/world RSS supplies the news. The server extracts article text when
+available for selected stories. Before headlines reach the feed, Luna screens a
+batch of up to 60 headlines, publication dates, and short feed summaries. It picks
+up to 12 significant market developments, ranked by likely market significance,
+with a short reason for each. Duplicate coverage and low-impact stories are
+excluded. This screening is a separate model request from the two per-article
+requests. The server checks feeds every three minutes, reuses the shortlist when
+the candidate batch is unchanged, and shares that cache across visitors in the
+same server process. Failed screenings retain the last audited shortlist with a
+warning (or report an error if none exists); unaudited news is never substituted.
+
+The server extracts article text when
 available and explicitly labels summary-only analysis otherwise. Article text
 is sent to OpenAI for analysis. Dates require a supporting quote present in that
 text; ambiguous dates stay unplaced. Date-only events shade a UTC calendar day.

@@ -4,6 +4,10 @@ An article-to-markets demo: GPT-5.6 Luna proposes related securities, then one
 parallel OpenMarkets MCP round verifies profile, quote, and history data before a
 short final refinement. This is research/demo software, not investment advice.
 
+The news feed is first screened by Luna: up to 12 significant market stories,
+ranked by likely impact, with a short reason per headline. One cached batch
+request screens changed feeds; article analysis still uses its own two requests.
+
 ## Run locally
 
 Copy `.env.example` to `.env`, set `OAI_KEY`, then run:

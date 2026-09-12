@@ -6,6 +6,8 @@ import market_mcp as m
 import news_dashboard as dashboard
 
 def run():
+    import test_news_audit
+    test_news_audit.run()
     old_hosts, old_render = os.getenv('ALLOWED_HOSTS'), os.getenv('RENDER_EXTERNAL_HOSTNAME')
     try:
         os.environ['ALLOWED_HOSTS'] = 'demo.example.com'
