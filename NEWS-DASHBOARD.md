@@ -8,7 +8,7 @@ uv run news_dashboard.py
 
 Open http://127.0.0.1:8766. Keep the process running while using the dashboard.
 The frontend is `news-first.html`, with inline CSS and JavaScript. A local Python
-backend is necessary for the OpenAI key and Yahoo data; this version is not an
+backend is necessary for the OpenAI key and OpenMarkets data; this version is not an
 offline HTML snapshot. The earlier dashboard remains in the parent folder.
 
 The server loads `OAI_KEY` from `.env`, never serves that file, and uses the
@@ -46,3 +46,12 @@ are polling intervals, not a guarantee of exchange real-time data. Fast quotes d
 not supply trade timestamps; fetch times must not be interpreted as trade times.
 Unknown tickers and unavailable data have explicit
 error states. This is a local personal research prototype.
+
+## Deployment
+
+Use the GitHub repository as source control and deploy the included `render.yaml`
+as a Render Blueprint. GitHub Pages cannot run this FastAPI/OpenMarkets backend.
+Set `OAI_KEY` only in Render's secret environment settings. `DEMO_PASSWORD` is an
+optional HTTP Basic Auth password for a shareable demo link and is recommended to
+prevent uninvited visitors spending the API budget. Render supplies its hostname
+to the app; add custom domains through `ALLOWED_HOSTS` if needed.

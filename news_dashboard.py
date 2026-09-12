@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -70,6 +71,24 @@ class Selection(BaseModel):
 def now():
     return datetime.now(timezone.utc).isoformat()
 
+def allowed_hosts():
+    hosts = {'127.0.0.1', 'localhost'}
+    for name in ('ALLOWED_HOSTS', 'RENDER_EXTERNAL_HOSTNAME'):
+        hosts.update(host.strip().lower() for host in os.getenv(name, '').split(',') if host.strip())
+    return hosts
+
+def demo_authorized(header):
+    password = os.getenv('DEMO_PASSWORD')
+    if not password:
+        return True
+    import base64
+    try:
+        scheme, token = header.split(' ', 1)
+        supplied = base64.b64decode(token, validate=True).decode().split(':', 1)[1]
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return scheme.lower() == 'basic' and secrets.compare_digest(supplied, password)
+
 def public_get(url):
     # Only fetch known publisher URLs; never follow redirects to arbitrary hosts.
     for _ in range(5):
@@ -86,12 +105,17 @@ def public_get(url):
     raise ValueError('Too many redirects')
 
 @app.middleware('http')
-async def local_only(request: Request, call_next):
-    if request.headers.get('host') not in {'127.0.0.1:8766', 'localhost:8766'}:
-        return JSONResponse({'detail': 'Local access only'}, status_code=403)
+async def public_only(request: Request, call_next):
+    host = request.headers.get('host', '').split(':', 1)[0].lower().rstrip('.')
+    if host not in allowed_hosts():
+        return JSONResponse({'detail': 'Host not allowed'}, status_code=403)
+    if request.url.path != '/api/health' and not demo_authorized(request.headers.get('authorization', '')):
+        return JSONResponse({'detail': 'Demo password required'}, status_code=401,
+                            headers={'WWW-Authenticate': 'Basic realm="FinNews demo"'})
     if request.method == 'POST':
         origin = request.headers.get('origin')
-        if origin and origin not in {'http://127.0.0.1:8766', 'http://localhost:8766'}:
+        origin_host = urlparse(origin).hostname if origin else host
+        if origin_host != host:
             return JSONResponse({'detail': 'Cross-origin requests denied'}, status_code=403)
         if 'application/json' not in request.headers.get('content-type', ''):
             return JSONResponse({'detail': 'JSON required'}, status_code=415)
@@ -284,4 +308,4 @@ if __name__ == '__main__':
         import test_market_mcp
         test_market_mcp.run()
     else:
-        uvicorn.run(app, host='127.0.0.1', port=8766, access_log=False)
+        uvicorn.run(app, host=os.getenv('HOST', '127.0.0.1'), port=int(os.getenv('PORT', '8766')), access_log=False)
