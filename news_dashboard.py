@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
-MODEL = 'gpt-5.6-luna'
+MODEL = 'gpt-6-luna'
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=market_mcp.lifespan)
 FEEDS = ['https://feeds.bbci.co.uk/news/business/rss.xml', 'https://feeds.bbci.co.uk/news/world/rss.xml']
 ALLOWED = {'feeds.bbci.co.uk', 'www.bbc.co.uk', 'www.bbc.com', 'bbc.com', 'bbc.co.uk'}
@@ -100,7 +100,7 @@ def openai_error_message(exc):
     if code in {'credit_balance_exhausted', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'organization_usage_limit_exceeded'} or getattr(exc, 'type', None) == 'insufficient_quota':
         return 'This shared demo has reached its OpenAI credit limit. New analyses are paused.'
     return {401: 'OpenAI rejected the API key.', 403: 'This API key cannot access the selected model.',
-            404: 'gpt-5.6-luna is not available for this API project.',
+            404: 'gpt-6-luna is not available for this API project.',
             429: 'OpenAI is temporarily rate-limiting requests. Please try again shortly.'}.get(
                 getattr(exc, 'status_code', None), 'OpenAI request failed. Please retry.')
 

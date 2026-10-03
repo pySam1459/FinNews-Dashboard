@@ -1,6 +1,6 @@
 # FinNews Dashboard
 
-An article-to-markets demo: GPT-5.6 Luna proposes related securities, then one
+An article-to-markets demo: GPT-6 Luna proposes related securities, then one
 parallel OpenMarkets MCP round verifies profile, quote, and history data before a
 short final refinement. This is research/demo software, not investment advice.
 

@@ -12,7 +12,7 @@ backend is necessary for the OpenAI key and OpenMarkets data; this version is no
 offline HTML snapshot. The earlier dashboard remains in the parent folder.
 
 The server loads `OAI_KEY` from `.env`, never serves that file, and uses the
-OpenAI Responses API with `gpt-5.6-luna`, low reasoning effort and structured
+OpenAI Responses API with `gpt-6-luna`, low reasoning effort and structured
 output. Its short instruction is `PROMPT` in `news_dashboard.py`. It returns
 brief exposure hypotheses, not internal reasoning. The summary streams into the
 page as Luna writes it; tickers and dates appear after final schema validation.
