@@ -7,6 +7,7 @@ import market_mcp
 
 Symbol = Annotated[str, Field(pattern=r'^[A-Z0-9^][A-Z0-9.^=\-]{0,19}$')]
 Colour = Literal['blue', 'burgundy', 'green', 'gold', 'purple', 'orange', 'teal', 'gray']
+Days = Literal[1, 5, 30, 90, 180, 365]
 
 
 class Comparison(BaseModel):
@@ -35,11 +36,15 @@ class Tickers(Arguments):
 
 class AddComparisons(Tickers):
     colour: Colour | None = Field(description='Optional colour for the requested tickers; null keeps current colours.')
-    days: Literal[1, 5, 30] | None = Field(description='Optional chart range; null keeps the current range.')
+    days: Days | None = Field(description='Optional chart range; null keeps the current range. Ranges beyond 30 days use daily bars.')
+
+
+class RemoveTickers(Arguments):
+    tickers: list[Symbol] = Field(min_length=1, max_length=8)
 
 
 class View(Arguments):
-    days: Literal[1, 5, 30]
+    days: Days
     visible_tickers: list[Symbol] | None = Field(max_length=8, description='Null keeps current visibility; an empty list hides all lines.')
 
 
@@ -54,8 +59,8 @@ class Lookup(Arguments):
 
 DEFINITIONS = {
     'add_comparisons': (AddComparisons, 'Add 1–3 exact Yahoo symbols alongside article picks, or show existing symbols. Verify MCP price history first. Include requested colour/range here to complete a combined request without another tool round. Maximum three added comparisons in total.'),
-    'remove_comparisons': (Tickers, 'Remove chat-added comparisons only. Original article picks cannot be removed; hide them with set_chart_view.'),
-    'set_chart_view': (View, 'Set the chart range to 1, 5, or 30 days and optionally replace the visible ticker selection. All symbols must already be on the dashboard.'),
+    'remove_comparisons': (RemoveTickers, 'Delete ALL requested tickers from cards and graph, including original article picks and chat comparisons. Use one call with the full requested list. Never substitute hiding for removal. Does not change the shared article analysis.'),
+    'set_chart_view': (View, 'Set the chart range to 1, 5, 30, 90, 180, or 365 days and optionally replace visible tickers. Fetches MCP history when the range changes: 30-minute bars through 30 days, daily bars for longer views. All symbols must already be on the dashboard. Hiding is not removal.'),
     'set_line_colour': (LineColour, 'Change the line, legend, and card colour for an existing dashboard ticker using the named palette.'),
     'refresh_prices': (Arguments, 'Refresh quotes and history for all dashboard tickers via OpenMarkets. Provider data can be delayed; its 55-second cache still applies.'),
     'get_security_profile': (Lookup, 'Read a security profile via OpenMarkets and display its name, sector, industry, country, and business summary below the graph. Does not add a chart line.'),
@@ -72,9 +77,10 @@ class ChartState:
     visible: set[str]
     days: int
     colours: dict[str, Colour] = field(default_factory=dict)
+    removed: set[str] = field(default_factory=set)
 
     def symbols(self):
-        return [s['ticker'] for s in self.originals] + [s.ticker for s in self.comparisons]
+        return [s['ticker'] for s in self.originals if s['ticker'] not in self.removed] + [s.ticker for s in self.comparisons]
 
 
 def execute(name, arguments, state):
@@ -88,12 +94,17 @@ def execute(name, arguments, state):
     if name == 'add_comparisons':
         tickers = list(dict.fromkeys(args.tickers))
         new = [t for t in tickers if t not in state.symbols()]
-        if len(state.comparisons) + len(new) > 3:
+        originals = {s['ticker'] for s in state.originals}
+        if len(state.comparisons) + len([t for t in new if t not in originals]) > 3:
             return {'error': 'Only three added comparisons are allowed. Remove a comparison first.'}, None
-        records = market_mcp.fetch_batch(new) if new else []
+        days = args.days or state.days
+        to_fetch = list(dict.fromkeys(new + state.symbols())) if market_mcp.HISTORY_RANGES[days] != market_mcp.HISTORY_RANGES[state.days] else new
+        records = market_mcp.fetch_batch(to_fetch, days=days) if to_fetch else []
         checks = market_mcp.evidence(records)
-        prices, errors = [], {}
-        added = []
+        if to_fetch and market_mcp.HISTORY_RANGES[days] != market_mcp.HISTORY_RANGES[state.days] and all(market_mcp.chart_data(t, records).get('error') for t in to_fetch):
+            return {'error': 'OpenMarkets could not load this range. The previous chart was kept.', 'checks': checks}, None
+        errors = {}
+        added, restored = [], []
         for ticker in new:
             price = market_mcp.chart_data(ticker, records)
             if price.get('error'):
@@ -103,24 +114,29 @@ def execute(name, arguments, state):
             info = info if isinstance(info, dict) else {}
             title = info.get('longName') or info.get('shortName') or ticker
             comparison = Comparison(ticker=ticker, name=str(title)[:128], reason='Added at your request for comparison.')
-            state.comparisons.append(comparison)
-            added.append(comparison.model_dump())
-            prices.append(price)
+            if ticker in originals:
+                state.removed.discard(ticker)
+                restored.append(ticker)
+            else:
+                state.comparisons.append(comparison)
+                added.append(comparison.model_dump())
+        prices = [market_mcp.chart_data(t, records) for t in to_fetch if t in state.symbols()]
         shown = [t for t in tickers if t in state.symbols()]
+        if not shown:
+            return {'error': 'OpenMarkets could not add any requested ticker.', 'errors': errors, 'checks': checks}, None
         state.visible.update(shown)
         colours = {t: args.colour for t in shown} if args.colour else {}
         state.colours.update(colours)
         if shown and args.days is not None:
             state.days = args.days
-        result = {'added': added, 'shown': shown, 'errors': errors, 'checks': checks,
+        result = {'added': added, 'restored': restored, 'shown': shown, 'errors': errors, 'checks': checks,
                   'colours': colours, 'days': state.days}
-        return result, {'type': name, 'comparisons': added, 'prices': prices, 'shown': shown,
+        return result, {'type': name, 'comparisons': added, 'restored': restored, 'prices': prices, 'shown': shown,
                         'colours': colours, 'days': state.days}
     if name == 'remove_comparisons':
         originals = {s['ticker'] for s in state.originals}
-        if originals.intersection(args.tickers):
-            return {'error': 'Original article picks cannot be removed. Use set_chart_view to hide them.'}, None
-        removed = [s.ticker for s in state.comparisons if s.ticker in args.tickers]
+        removed = [t for t in state.symbols() if t in args.tickers]
+        state.removed.update(originals.intersection(removed))
         state.comparisons = [s for s in state.comparisons if s.ticker not in removed]
         state.visible.difference_update(removed)
         for ticker in removed:
@@ -130,17 +146,24 @@ def execute(name, arguments, state):
         if args.visible_tickers is not None:
             if set(args.visible_tickers) - set(state.symbols()):
                 return {'error': 'Visible tickers must already be on the dashboard. Add comparisons first.'}, None
+        records, prices = [], None
+        if state.symbols() and market_mcp.HISTORY_RANGES[args.days] != market_mcp.HISTORY_RANGES[state.days]:
+            records = market_mcp.fetch_batch(state.symbols(), ('get_fast_info', 'get_history'), days=args.days)
+            prices = [market_mcp.chart_data(t, records) for t in state.symbols()]
+            if all(p.get('error') for p in prices):
+                return {'error': 'OpenMarkets could not load this range. The previous chart was kept.', 'checks': market_mcp.evidence(records)}, None
+        if args.visible_tickers is not None:
             state.visible = set(args.visible_tickers)
         state.days = args.days
         view = {'days': state.days, 'visible_tickers': [t for t in state.symbols() if t in state.visible]}
-        return view, {'type': name, **view}
+        return {**view, 'checks': market_mcp.evidence(records)}, {'type': name, **view, 'prices': prices}
     if name == 'set_line_colour':
         if args.ticker not in state.symbols():
             return {'error': 'Ticker is not on the dashboard.'}, None
         state.colours[args.ticker] = args.colour
         return args.model_dump(), {'type': name, **args.model_dump()}
     if name == 'refresh_prices':
-        records = market_mcp.fetch_batch(state.symbols(), ('get_fast_info', 'get_history'))
+        records = market_mcp.fetch_batch(state.symbols(), ('get_fast_info', 'get_history'), days=state.days)
         prices = [market_mcp.chart_data(t, records) for t in state.symbols()]
         return {'checks': market_mcp.evidence(records), 'note': 'Fetch times are not trade times; provider/cache delays still apply.'}, {'type': name, 'prices': prices}
     records = market_mcp.fetch_batch([args.ticker], ('get_curated_info',))

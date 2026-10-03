@@ -46,8 +46,8 @@ dashboard context are sent to OpenAI. API credit-limit errors also appear in cha
 | Example request | Tool | Result |
 | --- | --- | --- |
 | Add the FTSE 100 and make its line gold for the last month | `add_comparisons` | Checks MCP profile, quote, and history, then adds a card and percentage-change line with the requested colour and range. |
-| Remove the FTSE comparison | `remove_comparisons` | Removes chat-added tickers only; original article picks remain available. |
-| Show only XOM and FTSE for the last month | `set_chart_view` | Sets 1-, 5-, or 30-day range and visible tickers without fetching data. |
+| Remove FTSE, BP, and VLO | `remove_comparisons` | Deletes all requested cards and lines, including original article picks, without changing the shared analysis. |
+| Show XOM for the last year | `set_chart_view` | Sets 1-, 5-, 30-, 90-, 180-, or 365-day range and visible tickers. Fetches MCP history when the history period or interval changes. |
 | Make the FTSE line gold | `set_line_colour` | Changes the card, line, and legend using an eight-colour palette. |
 | Refresh the prices | `refresh_prices` | Reads MCP quotes and history; the 55-second cache and provider delays still apply. |
 | Show XOM's company profile | `get_security_profile` | Displays the latest requested profile below the chart and MCP checks. |
@@ -62,7 +62,14 @@ The browser owns up to three added comparisons (eight securities total), visibil
 range, line colours, and the displayed profile. Each question sends this bounded
 state to the server. Tool actions update only that visitor's page, never the shared
 article-analysis cache. Selecting another story or reloading resets chart additions
-and chat. Clearing chat removes the conversation, but keeps chart changes.
+and chat. Removed original picks stay excluded on later chat requests and price
+refreshes. Asking Luna to add one again restores it without consuming a comparison
+slot. Clearing chat removes the conversation, but keeps chart changes.
+
+Tool calls appear within the Luna reply that requested them. Each call's progress
+row updates in place and stays with that reply. The conversation scrolls without
+a visible scrollbar; keyboard focus and wheel scrolling remain available.
+Enter sends chat. Ctrl/Cmd + Enter or Shift + Enter inserts a new line.
 
 `market_mcp.py` launches one local OpenMarkets stdio server using the Python MCP
 SDK v1. Docker installs the server during the build, so deployment startup does
@@ -94,7 +101,13 @@ text; ambiguous dates stay unplaced. Date-only events shade a UTC calendar day.
 Events outside the price window remain listed rather than being placed at a
 misleading point on the graph.
 
-OpenMarkets MCP (Yahoo upstream) supplies prices and one month of 30-minute bars. News refreshes
+OpenMarkets MCP (Yahoo upstream) supplies prices and history. Views through 30 days
+use `period=1mo, interval=30m`. Longer views request `3mo`, `6mo`, or `1y` with
+`interval=1d`; the graph labels this daily resolution. The history cache includes
+period and interval, so one visitor's long-range view cannot overwrite another's
+intraday data. Switching ranges reloads prices, and stale responses from previous
+ranges or ticker selections are discarded. Missing long-range history reports an
+error rather than extending a short dataset across an empty year. News refreshes
 every three minutes and prices every minute while the tab is visible. These
 are polling intervals, not a guarantee of exchange real-time data. Fast quotes do
 not supply trade timestamps; fetch times must not be interpreted as trade times.

@@ -19,6 +19,12 @@ when you select another story or reload the page.
 Try: “Add the FTSE 100 alongside these tickers and make its line gold”,
 “Show only XOM and the FTSE for the last month”, or “Show me XOM's company profile”.
 You can add up to three comparison securities without replacing the article picks.
+Ask Luna to remove any dashboard ticker, including an article pick. Removal deletes
+its card and line; hiding a line is a separate action. You can restore a removed
+ticker by asking Luna to add it again.
+Chart ranges reach one year, with daily bars for 3-month, 6-month, and 1-year views.
+Tool activity appears within each Luna reply. Enter sends a question;
+Ctrl/Cmd + Enter inserts a new line.
 Changes affect only your dashboard, not other visitors. Clearing chat keeps your
 chart changes; selecting another story resets them.
 

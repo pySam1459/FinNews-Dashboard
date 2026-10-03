@@ -11,7 +11,7 @@ import dashboard_tools as t
 import news_dashboard as d
 
 
-def records(tickers, tools=t.market_mcp.TOOLS):
+def records(tickers, tools=t.market_mcp.TOOLS, days=30):
     data = {'get_curated_info': {'longName': 'Test security', 'sector': 'Energy', 'longBusinessSummary': 'Produces energy.'},
             'get_fast_info': {'lastPrice': 110, 'currency': 'USD'},
             'get_history': [{'Date': '2026-10-01T10:00:00Z', 'Close': 100}, {'Date': '2026-10-02T10:00:00Z', 'Close': 110}]}
@@ -21,6 +21,22 @@ def records(tickers, tools=t.market_mcp.TOOLS):
 
 
 def run():
+    # Mixed original picks and chat comparisons must all disappear, not be hidden.
+    original_picks = [{'ticker': '^FTSE'}, {'ticker': 'VLO'}, {'ticker': 'XOM'}]
+    removal = t.ChartState(original_picks, [t.Comparison(ticker='BP', name='BP', reason='Comparison')],
+                           {'^FTSE', 'VLO', 'BP', 'XOM'}, 5)
+    removed, action = t.execute('remove_comparisons', json.dumps({'tickers': ['^FTSE', 'BP', 'VLO']}), removal)
+    assert removal.symbols() == ['XOM'], 'Removing mixed picks must delete all requested tickers, not hide them'
+    assert set(removed['removed']) == {'^FTSE', 'BP', 'VLO'} and set(action['tickers']) == set(removed['removed'])
+    assert original_picks == [{'ticker': '^FTSE'}, {'ticker': 'VLO'}, {'ticker': 'XOM'}]
+    with patch.object(t.market_mcp, 'fetch_batch', side_effect=records):
+        restored, restore_action = t.execute('add_comparisons', json.dumps({'tickers': ['VLO'], 'colour': None, 'days': None}), removal)
+        assert restored['restored'] == ['VLO'] and restore_action['restored'] == ['VLO']
+        assert removal.symbols() == ['VLO', 'XOM'] and not removal.comparisons
+    # Idempotent removal, including every remaining ticker.
+    t.execute('remove_comparisons', json.dumps({'tickers': ['VLO', 'XOM']}), removal)
+    assert not removal.symbols() and not removal.visible
+    assert t.execute('remove_comparisons', json.dumps({'tickers': ['VLO', 'XOM']}), removal)[0]['removed'] == []
     originals = [{'ticker': 'XOM'}]
     state = t.ChartState(originals, [], {'XOM'}, 5)
     def execute(name, **args):
@@ -42,8 +58,7 @@ def run():
         execute('set_line_colour', ticker='^FTSE', colour='gold')
         assert state.colours == {'^FTSE': 'gold'}
         unchanged = deepcopy(state)
-        for name, args in [('remove_comparisons', {'tickers': ['XOM']}),
-                           ('set_chart_view', {'days': 1, 'visible_tickers': ['BAD']}),
+        for name, args in [('set_chart_view', {'days': 1, 'visible_tickers': ['BAD']}),
                            ('set_line_colour', {'ticker': '^FTSE', 'colour': 'url(javascript:x)'}),
                            ('add_comparisons', {'tickers': ['BAD;DELETE']}),
                            ('add_comparisons', {'tickers': ['A'], 'extra': 1}),
@@ -65,6 +80,25 @@ def run():
         evidence, action = execute('refresh_prices')
         assert len(action['prices']) == 3 and len(evidence['checks']) == 6
         assert originals == [{'ticker': 'XOM'}], 'Visitor changes must never mutate cached article picks'
+        fetch.reset_mock()
+        result, action = execute('set_chart_view', days=365, visible_tickers=None)
+        assert fetch.call_args.kwargs['days'] == 365 and state.days == 365 and len(action['prices']) == 3
+        assert len(result['checks']) == 6
+        execute('refresh_prices')
+        assert fetch.call_args.kwargs['days'] == 365
+        unchanged = deepcopy(state)
+        with patch.object(t.market_mcp, 'fetch_batch', return_value=[]):
+            assert execute('set_chart_view', days=180, visible_tickers=None)[1] is None
+            assert state == unchanged, 'Failed history lookup must keep previous range and selection'
+        assert execute('set_chart_view', days=999, visible_tickers=None)[1] is None
+        unchanged = deepcopy(state)
+        assert execute('add_comparisons', tickers=['MISSING'], days=180)[1] is None
+        assert state == unchanged, 'Failed addition must not replace existing history with another resolution'
+        # A new benchmark added with a longer range must refresh existing lines too.
+        state.days = 5
+        result, action = execute('add_comparisons', tickers=['^FTSE'], days=180)
+        assert fetch.call_args.kwargs['days'] == 180 and set(fetch.call_args.args[0]) == {'XOM', 'AAPL', 'MSFT', '^FTSE'}
+        assert len(action['prices']) == 4 and state.days == 180
     for tool in t.TOOLS:
         schema = tool['parameters']
         assert tool['strict'] and schema['additionalProperties'] is False
@@ -113,8 +147,25 @@ def run():
                     {**body, 'comparisons': [{'ticker': 'XOM', 'name': 'duplicate', 'reason': ''}]},
                     {**body, 'comparisons': [{'ticker': '^FTSE', 'name': 'index', 'reason': ''}] * 2},
                     {**body, 'colours': {'AAPL': 'gold'}},
+                    {**body, 'removed': ['AAPL']},
                 ]:
                     assert (await http.post('/api/chat/stream', json=invalid)).status_code == 400
                 assert client.responses.stream.call_count == 2
+                # Removed originals stay removed across follow-ups, without changing the cache.
+                no_tools = MagicMock()
+                no_tools.__iter__.return_value = [SimpleNamespace(type='response.output_text.delta', delta='No tickers selected.')]
+                no_tools.get_final_response.return_value = SimpleNamespace(status='completed', output=[])
+                client.responses.stream.side_effect = [nullcontext(no_tools)]
+                followup = await http.post('/api/chat/stream', json={**body, 'removed': ['XOM'], 'days': 365})
+                assert json.loads(followup.text.splitlines()[-1])['type'] == 'complete'
+                context = json.loads(client.responses.stream.call_args.kwargs['input'][0]['content'].split('\n', 1)[1])
+                assert context['browserSnapshot']['removed'] == ['XOM'] and analysis['securities'] == originals
+                with patch.object(d, 'price_data', return_value={'ticker': 'XOM', 'bars': []}) as prices:
+                    for days in (1, 5, 30, 90, 180, 365):
+                        assert (await http.get('/api/prices', params={'tickers': 'XOM', 'days': days})).status_code == 200
+                        assert prices.call_args.args == ('XOM', days)
+                    count = prices.call_count
+                    assert (await http.get('/api/prices', params={'tickers': 'XOM', 'days': 999})).status_code == 400
+                    assert prices.call_count == count
     asyncio.run(check_stream())
     print('Dashboard tool checks passed.')

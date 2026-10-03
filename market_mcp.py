@@ -12,6 +12,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 TOOLS = ('get_curated_info', 'get_fast_info', 'get_history')
+HISTORY_RANGES = {1: ('1mo', '30m'), 5: ('1mo', '30m'), 30: ('1mo', '30m'),
+                  90: ('3mo', '1d'), 180: ('6mo', '1d'), 365: ('1y', '1d')}
 session = None
 startup_error = None
 loop = None
@@ -37,8 +39,9 @@ async def lifespan(app):
         yield
         session = None
 
-async def call(tool, ticker):
-    key = (tool, ticker)
+async def call(tool, ticker, days=30):
+    period, interval = HISTORY_RANGES[days]
+    key = (tool, ticker, period, interval) if tool == 'get_history' else (tool, ticker)
     ttl = 3600 if tool == 'get_curated_info' else 55
     if key in cache and time.monotonic() - cache[key][0] < ttl:
         return cache[key][1]
@@ -49,7 +52,8 @@ async def call(tool, ticker):
             return result
         args = {'ticker': ticker}
         if tool == 'get_history':
-            args.update(period='1mo', interval='30m')
+            args.update(period=period, interval=interval)
+            result.update(period=period, interval=interval)
         response = await asyncio.wait_for(session.call_tool(tool, args), 20)
         if response.isError:
             raise RuntimeError('Provider error')
@@ -69,11 +73,13 @@ async def call(tool, ticker):
         result['error'] = 'OpenMarkets data unavailable or timed out.'
     return result
 
-def fetch_batch(tickers, tools=TOOLS):
+def fetch_batch(tickers, tools=TOOLS, days=30):
     if any(tool not in TOOLS for tool in tools):
         raise ValueError('Tool not allowed')
+    if days not in HISTORY_RANGES:
+        raise ValueError('History range not allowed')
     async def gather():
-        return await asyncio.gather(*(call(tool, ticker) for ticker in tickers for tool in tools))
+        return await asyncio.gather(*(call(tool, ticker, days) for ticker in tickers for tool in tools))
     if loop is None or not loop.is_running():
         return [{'ticker': t, 'tool': name, 'error': 'OpenMarkets is not connected.'} for t in tickers for name in tools]
     future = asyncio.run_coroutine_threadsafe(gather(), loop)
@@ -104,6 +110,7 @@ def chart_data(ticker, records):
             'quote': fast.get('lastPrice') or bars[-1]['c'], 'quoteTime': None,
             'quoteSource': 'get_fast_info' if fast.get('lastPrice') else 'Latest history bar close',
             'updated': parts['get_history']['fetched'], 'source': 'OpenMarkets MCP',
+            'interval': parts['get_history'].get('interval', '30m'), 'period': parts['get_history'].get('period', '1mo'),
             'warning': parts.get('get_fast_info', {}).get('error')}
 
 def evidence(records):

@@ -46,8 +46,10 @@ def run():
     async def check_cache():
         class FakeSession:
             calls = 0
+            args = []
             async def call_tool(self, name, args):
                 self.calls += 1
+                self.args.append(args)
                 return SimpleNamespace(isError=False, structuredContent={'result': rows})
         fake = FakeSession()
         m.session = fake
@@ -55,6 +57,15 @@ def run():
             first = await m.call('get_history', 'XOM')
             second = await m.call('get_history', 'XOM')
             assert first == second and fake.calls == 1 and first['data'] == rows
+            assert fake.args[-1] == {'ticker': 'XOM', 'period': '1mo', 'interval': '30m'}
+            annual = await m.call('get_history', 'XOM', days=365)
+            assert fake.calls == 2 and annual['interval'] == '1d' and annual['period'] == '1y'
+            assert fake.args[-1] == {'ticker': 'XOM', 'period': '1y', 'interval': '1d'}
+            assert await m.call('get_history', 'XOM', days=365) == annual and fake.calls == 2
+            assert await m.call('get_history', 'XOM', days=5) == first and fake.calls == 2
+            for days, (period, interval) in m.HISTORY_RANGES.items():
+                await m.call('get_history', 'MSFT', days=days)
+                assert any(a == {'ticker': 'MSFT', 'period': period, 'interval': interval} for a in fake.args)
             m.session = None
             assert 'error' in await m.call('get_history', 'MISSING')
         finally:
