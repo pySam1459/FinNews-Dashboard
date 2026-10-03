@@ -85,6 +85,9 @@ Tool calls appear within the Luna reply that requested them. Each call's progres
 row updates in place and stays with that reply. The conversation scrolls without
 a visible scrollbar; keyboard focus and wheel scrolling remain available.
 Enter sends chat. Ctrl/Cmd + Enter or Shift + Enter inserts a new line.
+Submitting clears the input immediately. A failed reply restores the question for
+retry. Plain-language chart requests select the dashboard controls without requiring
+tool names; native MCP lookups only gather evidence.
 
 `market_mcp.py` launches one local OpenMarkets stdio server using the Python MCP
 SDK v1. Docker installs the server during the build, so deployment startup does
@@ -99,6 +102,9 @@ Checks: `uv run news_dashboard.py --self-test` (offline) and
 `uv run news_dashboard.py --check-prices` (live MCP, no OpenAI credits).
 `uv run news_dashboard.py --check-chat-mcp` uses OpenAI credits to verify that
 Luna calls all three native MCP tools and answers without changing the dashboard.
+It also checks plain-language ticker additions, including an earlier mistaken refusal.
+`node test_chat_input.cjs` checks immediate input clearing, failure recovery, and
+cancellation using the actual inline submission handler, without API calls.
 
 BBC business/world RSS supplies the news. The server extracts article text when
 available for selected stories. Before headlines reach the feed, Luna screens a

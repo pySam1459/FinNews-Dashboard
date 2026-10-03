@@ -40,4 +40,21 @@ def run():
                                for e in events for c in e.get('checks', [])), 'Requested history range was not forwarded'
                     print(''.join(e['text'] for e in events if e['type'] == 'delta').strip(), flush=True)
                     print('Live native MCP chat check passed.', flush=True)
+                    # Neither request names a tool, including recovery from an earlier mistaken refusal.
+                    for messages in [
+                        [{'role': 'user', 'content': 'Add BP to the graph.'}],
+                        [{'role': 'user', 'content': 'Add BP to the graph.'},
+                         {'role': 'assistant', 'content': 'I cannot change the graph directly.'},
+                         {'role': 'user', 'content': 'Please add BP alongside the other tickers.'}]
+                    ]:
+                        added = await http.post('/api/chat/stream', json={**body, 'messages': messages})
+                        added.raise_for_status()
+                        add_events = [json.loads(line) for line in added.text.splitlines()]
+                        assert add_events[-1]['type'] == 'complete', 'Plain-language chart request did not finish'
+                        actions = [e['action'] for e in add_events if e['type'] == 'action']
+                        assert len(actions) == 1 and actions[0]['type'] == 'add_comparisons'
+                        assert actions[0]['comparisons'][0]['ticker'] == 'BP' and actions[0]['prices'][0]['bars']
+                        assert [e['tool'] for e in add_events if e['type'] == 'tool' and e['status'] == 'started'] == ['add_comparisons']
+                        assert analysis == original
+                        print('Plain-language add request passed: ' + messages[-1]['content'], flush=True)
     asyncio.run(check())

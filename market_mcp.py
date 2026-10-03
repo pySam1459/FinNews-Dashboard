@@ -13,6 +13,11 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 TOOLS = ('get_curated_info', 'get_fast_info', 'get_history')
+CHAT_TOOL_DESCRIPTIONS = {
+    'get_curated_info': 'Use for read-only research about a company’s identity, sector or available financial and valuation metrics. Returns native fundamentals and fetch evidence; long text is capped at 1,600 characters. Does not change the dashboard. To display a profile panel use get_security_profile; to plot a ticker use add_comparisons.',
+    'get_fast_info': 'Use for a read-only lookup of a ticker’s provider quote, currency, exchange, volume and available market statistics. Returns native fields and fetch evidence. Fetch time is not trade time; prices may be delayed or cached. Does not add or refresh graph lines. Use add_comparisons to plot a ticker or refresh_prices to update the dashboard.',
+    'get_history': 'Use for read-only historical price research on any exact ticker, including unplotted securities. Accepts native period and interval; omitted values default to 1y and 1d. Returns bar count, first/last bars, percentage change, minimum/maximum close and up to 80 sampled closes. In bars, t is Unix milliseconds and c is close price. Does not plot a line or change the graph range. Use add_comparisons or set_chart_view for those changes.'
+}
 HISTORY_RANGES = {1: ('1mo', '30m'), 5: ('1mo', '30m'), 30: ('1mo', '30m'),
                   90: ('3mo', '1d'), 180: ('6mo', '1d'), 365: ('1y', '1d')}
 session = None
@@ -29,9 +34,7 @@ async def discover_chat_tools():
         for tool in page.tools:
             if tool.name in TOOLS:
                 chat_tools[tool.name] = {'type': 'function', 'name': tool.name,
-                    'description': (tool.description or '').strip() +
-                        ' Read-only OpenMarkets MCP lookup; does not change dashboard cards or lines. '
-                        'History returns statistics and at most 80 sampled close prices, with Unix-millisecond timestamps.',
+                    'description': CHAT_TOOL_DESCRIPTIONS[tool.name],
                     'parameters': tool.inputSchema, 'strict': False}
         cursor = page.nextCursor
         if not cursor or len(chat_tools) == len(TOOLS):

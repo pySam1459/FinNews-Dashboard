@@ -31,7 +31,7 @@ class Arguments(BaseModel):
 
 
 class Tickers(Arguments):
-    tickers: list[Symbol] = Field(min_length=1, max_length=3)
+    tickers: list[Symbol] = Field(min_length=1, max_length=3, description='1–3 exact Yahoo ticker symbols to add or show, e.g. BP, AAPL, ^FTSE. Include exchange suffixes for non-US listings.')
 
 
 class AddComparisons(Tickers):
@@ -40,30 +40,30 @@ class AddComparisons(Tickers):
 
 
 class RemoveTickers(Arguments):
-    tickers: list[Symbol] = Field(min_length=1, max_length=8)
+    tickers: list[Symbol] = Field(min_length=1, max_length=8, description='All exact symbols the user wants deleted, including original article picks and hidden tickers. Send the full list in one call.')
 
 
 class View(Arguments):
-    days: Days
+    days: Days = Field(description='Chart range: 1, 5, 30, 90, 180, or 365 days. Keep the current days when only changing visibility. Ranges beyond 30 days use daily bars.')
     visible_tickers: list[Symbol] | None = Field(max_length=8, description='Null keeps current visibility; an empty list hides all lines.')
 
 
 class LineColour(Arguments):
-    ticker: Symbol
-    colour: Colour
+    ticker: Symbol = Field(description='Exact symbol already on the dashboard whose card, line and legend should change colour.')
+    colour: Colour = Field(description='Requested named palette colour. Arbitrary CSS and hex colours are not supported.')
 
 
 class Lookup(Arguments):
-    ticker: Symbol
+    ticker: Symbol = Field(description='Exact Yahoo symbol whose company profile should be displayed. It need not already be on the graph.')
 
 
 DEFINITIONS = {
-    'add_comparisons': (AddComparisons, 'Add 1–3 exact Yahoo symbols alongside article picks, or show existing symbols. Verify MCP price history first. Include requested colour/range here to complete a combined request without another tool round. Maximum three added comparisons in total.'),
-    'remove_comparisons': (RemoveTickers, 'Delete ALL requested tickers from cards and graph, including original article picks and chat comparisons. Use one call with the full requested list. Never substitute hiding for removal. Does not change the shared article analysis.'),
-    'set_chart_view': (View, 'Set the chart range to 1, 5, 30, 90, 180, or 365 days and optionally replace visible tickers. Fetches MCP history when the range changes: 30-minute bars through 30 days, daily bars for longer views. All symbols must already be on the dashboard. Hiding is not removal.'),
-    'set_line_colour': (LineColour, 'Change the line, legend, and card colour for an existing dashboard ticker using the named palette.'),
-    'refresh_prices': (Arguments, 'Refresh quotes and history for all dashboard tickers via OpenMarkets. Provider data can be delayed; its 55-second cache still applies.'),
-    'get_security_profile': (Lookup, 'Read a security profile via OpenMarkets and display its name, sector, industry, country, and business summary below the graph. Does not add a chart line.'),
+    'add_comparisons': (AddComparisons, 'Use when asked to add, plot, overlay or compare a stock, index or other security on the graph. This tool changes the dashboard: adds a visible price line and ticker card, restores removed picks, or shows existing tickers. It performs MCP verification itself; no preliminary lookup is needed. Include requested colour and range in this call, otherwise pass null. Maximum three added comparisons in total. Returns confirmed additions or lookup errors.'),
+    'remove_comparisons': (RemoveTickers, 'Use when asked to remove or delete securities from the dashboard. Deletes all requested cards and lines, including original article picks and hidden tickers. Pass the full list in one call. Returns removed symbols. Do not substitute hiding with set_chart_view. Changes only this visitor’s dashboard, not the shared article analysis.'),
+    'set_chart_view': (View, 'Use when asked to change the graph range or show/hide existing lines. Changes the displayed range and optionally replaces visible tickers; null keeps visibility, [] hides all. Loads MCP history when its period or interval changes. Returns the applied view or an error that preserves the old view. Cannot add new tickers: use add_comparisons. Hiding keeps cards; deletion uses remove_comparisons.'),
+    'set_line_colour': (LineColour, 'Use when asked to recolour an existing security. Changes its graph line, ticker card and legend to a named palette colour and returns the applied change. Does not add securities or fetch prices. For a new ticker with a colour, use add_comparisons instead.'),
+    'refresh_prices': (Arguments, 'Use when asked to update or refresh prices on the graph. Fetches quotes and history for all current dashboard tickers and updates the chart. Returns lookup evidence and errors. No arguments. Keeps tickers, visibility, range and colours. The 55-second cache and provider delays still apply; not guaranteed real-time.'),
+    'get_security_profile': (Lookup, 'Use when asked to show or display a company profile on the dashboard. Fetches its name, sector, industry, country and business summary and displays a panel below the graph. Does not add a price line. Returns the displayed profile or a lookup error. For research without displaying a panel, use native get_curated_info.'),
 }
 TOOLS = [{'type': 'function', 'name': name, 'description': description,
           'parameters': model.model_json_schema(), 'strict': True}

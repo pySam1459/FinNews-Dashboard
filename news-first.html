@@ -80,7 +80,7 @@ async function sendChat(event){
   event.preventDefault();const question=$('chat-input').value.trim();if(!result||chatController||!question)return;
   const controller=new AbortController();chatController=controller;const messages=[...chatMessages.slice(-10),{role:'user',content:question}];
   chatMessage('user',question);const reply=chatMessage('assistant',''),toolRows=new Map();let answer='';
-  $('chat-input').disabled=true;$('chat-send').disabled=true;$('chat-error').textContent='';$('chat-status').textContent='Luna is reading the dashboard…';
+  $('chat-input').value='';$('chat-input').disabled=true;$('chat-send').disabled=true;$('chat-error').textContent='';$('chat-status').textContent='Luna is reading the dashboard…';
   try{
     const {start,end}=chartWindow();
     await readStream('/api/chat/stream',{id:selected.id,days,rangeStart:new Date(start).toISOString(),rangeEnd:new Date(end).toISOString(),prices:chatPrices(),comparisons,removed:[...removedTickers],colours:lineColours,profile,messages},controller.signal,event=>{
@@ -91,8 +91,8 @@ async function sendChat(event){
     });
     if(chatController!==controller)return;
     if(!answer.trim())throw Error('Luna returned an empty reply. Please try again.');
-    chatMessages=[...messages,{role:'assistant',content:answer.slice(0,6000)}];$('chat-input').value='';$('chat-status').textContent='';
-  }catch(e){if(chatController!==controller)return;reply.body.textContent=answer.trimStart()||'No reply received.';$('chat-error').textContent=e.message;$('chat-status').textContent='Reply incomplete; not added to conversation history. Your question is ready to retry.';}
+    chatMessages=[...messages,{role:'assistant',content:answer.slice(0,6000)}];$('chat-status').textContent='';
+  }catch(e){if(chatController!==controller)return;$('chat-input').value=question;reply.body.textContent=answer.trimStart()||'No reply received.';$('chat-error').textContent=e.message;$('chat-status').textContent='Reply incomplete; not added to conversation history. Your question is ready to retry.';}
   finally{if(chatController===controller){chatController=null;$('chat-input').disabled=false;$('chat-send').disabled=false;$('chat-input').focus();}}
 }
 function feed(){const q=$('search').value.toLowerCase();$('feed').innerHTML=news.filter(n=>n.title.toLowerCase().includes(q)).map(n=>'<button class="story '+(selected?.id===n.id?'active':'')+'" data-id="'+n.id+'" aria-pressed="'+(selected?.id===n.id)+'"><span>'+esc(n.publisher)+' · '+date(n.published)+'</span><strong>'+esc(n.title)+'</strong><span>'+esc(n.marketReason||'')+'</span></button>').join('')||'<div class="empty">'+(q?'No matching stories.':'No stories passed the market-significance screen.')+'</div>';document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>selectStory(news.find(n=>n.id===b.dataset.id)));}

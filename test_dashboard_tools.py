@@ -103,6 +103,7 @@ def run():
         schema = tool['parameters']
         assert tool['strict'] and schema['additionalProperties'] is False
         assert set(schema.get('required', [])) == set(schema['properties'])
+        assert all(p.get('description') for p in schema['properties'].values()), 'Every dashboard argument needs usage guidance'
 
     async def check_stream():
         story = {'id': 'test', 'title': 'Oil story'}
