@@ -8,6 +8,12 @@ The news feed is first screened by Luna: up to 12 significant market stories,
 ranked by likely impact, with a short reason per headline. One cached batch
 request screens changed feeds; article analysis still uses its own two requests.
 
+After selecting a story, use **Ask Luna** below the chart and MCP checks to ask
+questions or follow-ups. Replies stream from the same model using the displayed
+story, analysis, MCP evidence, and current chart snapshot. Each question makes
+one API request, without additional research. Chat stays in page memory and resets
+when you select another story or reload the page.
+
 ## Run locally
 
 Copy `.env.example` to `.env`, set `OAI_KEY`, then run:

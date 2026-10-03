@@ -23,6 +23,20 @@ it cannot introduce new symbols. There is no iterative research loop. The UI sho
 successful and failed MCP checks. Each new analysis uses up to two API requests;
 results are cached in memory until server restart.
 
+The **Ask Luna** panel below the graphs and MCP checks streams replies from
+`/api/chat/stream`. Each question sends the current chart range, shown/hidden
+securities, latest displayed quotes, and up to 80 sampled bars per visible
+security with the full range's high and low. The backend adds its cached article
+metadata, analysis, date annotations, and MCP evidence. It does not fetch more
+article text or call new tools. Luna must acknowledge summary-only coverage,
+missing timestamps, and the difference between exposure and causation.
+
+Chat uses one Responses API call per question, low reasoning effort, a 1,600-token
+output limit, no retries, and `store=False`. The latest five completed turns are
+sent with the next question. Conversation history lives only in page memory;
+selecting another story, clearing chat, or reloading removes it. Questions and
+dashboard context are sent to OpenAI. API credit-limit errors also appear in chat.
+
 `market_mcp.py` launches one local OpenMarkets stdio server using the Python MCP
 SDK v1. Docker installs the server during the build, so deployment startup does
 not download its dependencies. Local runs use the installed `openmarkets` command
