@@ -12,6 +12,9 @@ After selecting a story, use **Ask Luna** directly below the summary to ask
 questions or follow-ups. Replies stream from the same model using the displayed
 story, analysis, MCP evidence, and current chart snapshot. Ask it to add a benchmark,
 change the chart, refresh prices, or look up a company through OpenMarkets MCP.
+Chat can also call the native `get_curated_info`, `get_fast_info`, and `get_history`
+MCP tools for read-only research, including tickers not on the graph. Try:
+“Check BP's valuation and three-month price history without adding it to the chart.”
 Ordinary questions use one API request. Tool requests use at most two requests
 and four tool calls. Chat stays in page memory and resets
 when you select another story or reload the page.

@@ -8,6 +8,7 @@ import time
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
 
+from jsonschema import validate, ValidationError
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -18,12 +19,30 @@ session = None
 startup_error = None
 loop = None
 cache = {}
+chat_tools = {}
+
+async def discover_chat_tools():
+    chat_tools.clear()
+    cursor = None
+    while True:
+        page = await asyncio.wait_for(session.list_tools(cursor=cursor), 20)
+        for tool in page.tools:
+            if tool.name in TOOLS:
+                chat_tools[tool.name] = {'type': 'function', 'name': tool.name,
+                    'description': (tool.description or '').strip() +
+                        ' Read-only OpenMarkets MCP lookup; does not change dashboard cards or lines. '
+                        'History returns statistics and at most 80 sampled close prices, with Unix-millisecond timestamps.',
+                    'parameters': tool.inputSchema, 'strict': False}
+        cursor = page.nextCursor
+        if not cursor or len(chat_tools) == len(TOOLS):
+            break
 
 @asynccontextmanager
 async def lifespan(app):
     global session, loop, startup_error
     loop = asyncio.get_running_loop()
     startup_error = None
+    chat_tools.clear()
     async with AsyncExitStack() as stack:
         try:
             installed = shutil.which('openmarkets')
@@ -36,24 +55,37 @@ async def lifespan(app):
             session = None
             startup_error = f'OpenMarkets failed to initialise ({type(exc).__name__}). See server startup logs.'
             logging.exception('OpenMarkets MCP startup failed')
+        if session is not None:
+            try:
+                await discover_chat_tools()
+            except Exception:
+                chat_tools.clear()
+                logging.exception('OpenMarkets chat tool discovery failed; chart lookups remain available')
         yield
         session = None
+        chat_tools.clear()
 
 async def call(tool, ticker, days=30):
     period, interval = HISTORY_RANGES[days]
-    key = (tool, ticker, period, interval) if tool == 'get_history' else (tool, ticker)
+    args = {'ticker': ticker}
+    if tool == 'get_history':
+        args.update(period=period, interval=interval)
+    return await call_native(tool, args)
+
+async def call_native(tool, args):
+    if tool == 'get_history':
+        args = {'period': '1y', 'interval': '1d', **args}
+    key = (tool, tuple(sorted(args.items())))
     ttl = 3600 if tool == 'get_curated_info' else 55
     if key in cache and time.monotonic() - cache[key][0] < ttl:
         return cache[key][1]
-    result = {'ticker': ticker, 'tool': tool}
+    result = {'ticker': args['ticker'], 'tool': tool}
     try:
         if session is None:
             result['error'] = startup_error or 'OpenMarkets MCP is not connected.'
             return result
-        args = {'ticker': ticker}
         if tool == 'get_history':
-            args.update(period=period, interval=interval)
-            result.update(period=period, interval=interval)
+            result.update(period=args['period'], interval=args['interval'])
         response = await asyncio.wait_for(session.call_tool(tool, args), 20)
         if response.isError:
             raise RuntimeError('Provider error')
@@ -72,6 +104,35 @@ async def call(tool, ticker, days=30):
     except Exception:
         result['error'] = 'OpenMarkets data unavailable or timed out.'
     return result
+
+def execute_direct(tool, arguments):
+    """Forward a validated native MCP call, returning evidence but no UI action."""
+    if tool not in chat_tools or tool not in TOOLS:
+        return {'error': 'MCP tool is not available or allowed.'}
+    try:
+        args = json.loads(arguments)
+        validate(args, chat_tools[tool]['parameters'])
+    except (ValueError, TypeError, ValidationError):
+        return {'error': 'Invalid MCP tool arguments. No lookup made.'}
+    if loop is None or not loop.is_running():
+        return {'error': 'OpenMarkets MCP is not connected.'}
+    future = asyncio.run_coroutine_threadsafe(call_native(tool, args), loop)
+    try:
+        record = future.result(timeout=25)
+    except TimeoutError:
+        future.cancel()
+        return {'error': 'OpenMarkets MCP lookup timed out.'}
+    checks = evidence([record])
+    if checks[0].get('error'):
+        return {'error': checks[0]['error'], 'checks': checks}
+    data = record['data']
+    if tool == 'get_history':
+        bars = chart_data(args['ticker'], [record])['bars']
+        data = {**checks[0]['data'], 'low': min(b['c'] for b in bars), 'high': max(b['c'] for b in bars),
+                'sampledBars': bars if len(bars) <= 80 else [bars[round(i*(len(bars)-1)/79)] for i in range(80)]}
+    else:
+        data = {k: v[:1600] if isinstance(v, str) else v for k, v in data.items()}
+    return {'source': 'OpenMarkets MCP', 'data': data, 'checks': checks}
 
 def fetch_batch(tickers, tools=TOOLS, days=30):
     if any(tool not in TOOLS for tool in tools):

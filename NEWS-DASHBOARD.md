@@ -51,12 +51,27 @@ dashboard context are sent to OpenAI. API credit-limit errors also appear in cha
 | Make the FTSE line gold | `set_line_colour` | Changes the card, line, and legend using an eight-colour palette. |
 | Refresh the prices | `refresh_prices` | Reads MCP quotes and history; the 55-second cache and provider delays still apply. |
 | Show XOM's company profile | `get_security_profile` | Displays the latest requested profile below the chart and MCP checks. |
+| Check BP's valuation without changing the graph | `get_curated_info` | Native MCP lookup returns curated fundamentals, including available valuation and financial metrics. |
+| Look up BP's latest quote without adding it | `get_fast_info` | Native MCP lookup returns available price, currency, exchange, volume, and market statistics. |
+| How did BP move over three months? | `get_history` | Native MCP lookup accepts `ticker`, `period`, and `interval`. Returns first and last bars, percentage change, close-price high and low, and up to 80 sampled prices. Does not change the graph. |
 
 `dashboard_tools.py` validates arguments against strict function schemas. There
 is no arbitrary code, CSS, browser navigation, or trading tool. Full price arrays
 go to the chart, while Luna receives compact MCP evidence. Failed ticker lookups
 do not add empty chart lines. Partial successes are reported in tool activity and
 the answer. The MCP checks widget includes checks requested through chat.
+
+At startup, the server discovers these three native tools through MCP `list_tools`.
+Their names and input schemas are sent to Luna alongside the six dashboard tools.
+Native schemas retain their optional parameters with `strict=False`; the server
+validates every model-generated call against the discovered schema before calling
+MCP `call_tool`. The three-tool allowlist prevents access to the rest of the MCP
+catalogue. Native lookups return evidence only, never dashboard actions. Profile
+and quote results preserve available native fields, with strings capped at 1,600
+characters. History is sampled rather than sending full arrays to the model.
+Native lookups share the existing cache, timeouts, and four-call limit with dashboard
+controls. A lookup's price can differ from the plotted snapshot; research does not
+refresh or redraw the chart. `/api/health` lists discovered tools in `chatMcpTools`.
 
 The browser owns up to three added comparisons (eight securities total), visibility,
 range, line colours, and the displayed profile. Each question sends this bounded
@@ -75,13 +90,15 @@ Enter sends chat. Ctrl/Cmd + Enter or Shift + Enter inserts a new line.
 SDK v1. Docker installs the server during the build, so deployment startup does
 not download its dependencies. Local runs use the installed `openmarkets` command
 when available, otherwise `uvx openmarkets@latest`. This is independent of the
-Codex connection. The backend orchestrates tools
-for Luna's candidates, rather than exposing unrestricted tool access to the model.
+Codex connection. The backend orchestrates tools for the initial article analysis;
+chat Luna can also select the three allowlisted native MCP tools directly.
 Profiles are cached for one hour; quotes/history for 55 seconds and reused by
 charts. Luna receives compact history statistics, not full chart arrays.
 
 Checks: `uv run news_dashboard.py --self-test` (offline) and
 `uv run news_dashboard.py --check-prices` (live MCP, no OpenAI credits).
+`uv run news_dashboard.py --check-chat-mcp` uses OpenAI credits to verify that
+Luna calls all three native MCP tools and answers without changing the dashboard.
 
 BBC business/world RSS supplies the news. The server extracts article text when
 available for selected stories. Before headlines reach the feed, Luna screens a

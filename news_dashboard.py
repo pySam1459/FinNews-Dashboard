@@ -63,7 +63,13 @@ CHAT_PROMPT = ('Answer questions about the supplied dashboard in concise plain t
                'Supported ranges: 1, 5, 30, 90, 180, 365 days. Above 30 days use daily bars, not intraday detail. '
                'Distinguish hypotheses from observed moves; correlation is not causation. '
                'State missing evidence and timestamps, and respect summary-only article coverage. '
-               'Use tools only when the latest user request asks for a dashboard change, refresh or security lookup. '
+               'Use tools for requested dashboard changes or factual security lookups needing evidence beyond the snapshot. '
+               'Native OpenMarkets MCP tools get_curated_info, get_fast_info and get_history are read-only lookups '
+               'for any exact ticker, including ones not plotted. They do not change the dashboard. '
+               'Use them for fundamentals, quotes or historical questions; use dashboard tools for chart changes. '
+               'Do not fetch data for ordinary conceptual questions already answered by the supplied context. '
+               'Fresh lookup results may differ from plotted prices; do not claim a lookup refreshed the chart. '
+               'MCP fetch times are not trade times. History results contain sampled prices, not the full series. '
                'You can add up to three comparison tickers alongside the original picks, remove comparisons, '
                'change the range/visible lines/line colours, refresh prices, or display a security profile. '
                'Use exact Yahoo symbols (FTSE 100: ^FTSE, S&P 500: ^GSPC), including exchange suffixes. '
@@ -203,6 +209,7 @@ def index():
 def health():
     return {'keyConfigured': bool(os.getenv('OAI_KEY')), 'model': MODEL,
             'mcpConnected': market_mcp.session is not None, 'mcpTools': market_mcp.TOOLS,
+            'chatMcpTools': list(market_mcp.chat_tools),
             'mcpStartupError': market_mcp.startup_error}
 
 @app.get('/api/news')
@@ -423,11 +430,12 @@ def chat_stream(chat: ChatRequest):
                                       {p.ticker for p in chat.prices if p.shown}, chat.days, dict(chat.colours), set(chat.removed))
     def chunks():
         try:
+            tools = dashboard_tools.TOOLS + list(market_mcp.chat_tools.values())
             inputs = [{'role': 'user', 'content': 'Dashboard context:\n' + json.dumps(context)}] + [message.model_dump() for message in chat.messages]
             with OpenAI(api_key=os.environ['OAI_KEY'], timeout=60, max_retries=0) as client:
                 for round_number in range(2):
                     with client.responses.stream(model=MODEL, instructions=CHAT_PROMPT, input=inputs,
-                        tools=dashboard_tools.TOOLS, tool_choice='auto' if round_number == 0 else 'none',
+                        tools=tools, tool_choice='auto' if round_number == 0 else 'none',
                         parallel_tool_calls=True, include=['reasoning.encrypted_content'],
                         reasoning={'effort': 'low'}, max_output_tokens=1600, store=False) as stream:
                         for event in stream:
@@ -447,6 +455,8 @@ def chat_stream(chat: ChatRequest):
                         yield json.dumps({'type': 'tool', 'tool': call.name, 'call_id': call.call_id, 'status': 'started', 'message': 'Running ' + call.name + '…'}) + '\n'
                         if index >= 4:
                             data, action = {'error': 'Four-tool limit reached for this question.'}, None
+                        elif call.name in market_mcp.TOOLS:
+                            data, action = market_mcp.execute_direct(call.name, call.arguments), None
                         else:
                             data, action = dashboard_tools.execute(call.name, call.arguments, state)
                         data['chart'] = {'tickers': state.symbols(), 'days': state.days, 'colours': state.colours.copy(),
@@ -485,6 +495,9 @@ if __name__ == '__main__':
                 assert all('error' not in r for r in records)
                 assert market_mcp.chart_data('XOM', records)['bars']
         asyncio.run(check_mcp())
+    elif '--check-chat-mcp' in sys.argv:
+        import test_mcp_chat_live
+        test_mcp_chat_live.run()
     elif '--self-test' in sys.argv:
         import test_market_mcp
         test_market_mcp.run()

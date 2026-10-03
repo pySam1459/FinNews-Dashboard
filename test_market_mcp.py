@@ -12,6 +12,8 @@ def run():
     test_dashboard_chat.run()
     import test_dashboard_tools
     test_dashboard_tools.run()
+    import test_mcp_chat
+    test_mcp_chat.run()
     old_hosts, old_render = os.getenv('ALLOWED_HOSTS'), os.getenv('RENDER_EXTERNAL_HOSTNAME')
     try:
         os.environ['ALLOWED_HOSTS'] = 'demo.example.com'
