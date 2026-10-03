@@ -23,7 +23,7 @@ it cannot introduce new symbols. There is no iterative research loop. The UI sho
 successful and failed MCP checks. Each new analysis uses up to two API requests;
 results are cached in memory until server restart.
 
-The **Ask Luna** panel below the graphs and MCP checks streams replies from
+The **Ask Luna** panel directly below the summary streams replies from
 `/api/chat/stream`. Each question sends the current chart range, shown/hidden
 securities, latest displayed quotes, and up to 80 sampled bars per visible
 security with the full range's high and low. The backend adds its cached article
