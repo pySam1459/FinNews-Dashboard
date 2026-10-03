@@ -10,6 +10,8 @@ def run():
     test_news_audit.run()
     import test_dashboard_chat
     test_dashboard_chat.run()
+    import test_dashboard_tools
+    test_dashboard_tools.run()
     old_hosts, old_render = os.getenv('ALLOWED_HOSTS'), os.getenv('RENDER_EXTERNAL_HOSTNAME')
     try:
         os.environ['ALLOWED_HOSTS'] = 'demo.example.com'

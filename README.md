@@ -10,9 +10,17 @@ request screens changed feeds; article analysis still uses its own two requests.
 
 After selecting a story, use **Ask Luna** directly below the summary to ask
 questions or follow-ups. Replies stream from the same model using the displayed
-story, analysis, MCP evidence, and current chart snapshot. Each question makes
-one API request, without additional research. Chat stays in page memory and resets
+story, analysis, MCP evidence, and current chart snapshot. Ask it to add a benchmark,
+change the chart, refresh prices, or look up a company through OpenMarkets MCP.
+Ordinary questions use one API request. Tool requests use at most two requests
+and four tool calls. Chat stays in page memory and resets
 when you select another story or reload the page.
+
+Try: “Add the FTSE 100 alongside these tickers and make its line gold”,
+“Show only XOM and the FTSE for the last month”, or “Show me XOM's company profile”.
+You can add up to three comparison securities without replacing the article picks.
+Changes affect only your dashboard, not other visitors. Clearing chat keeps your
+chart changes; selecting another story resets them.
 
 ## Run locally
 

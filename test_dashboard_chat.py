@@ -30,7 +30,7 @@ def run():
             stream = client.responses.stream.return_value.__enter__.return_value
             stream.__iter__.return_value = [SimpleNamespace(type='response.output_text.delta', delta='Oil '),
                                             SimpleNamespace(type='response.output_text.delta', delta='exposure.')]
-            stream.get_final_response.return_value = SimpleNamespace(status='completed')
+            stream.get_final_response.return_value = SimpleNamespace(status='completed', output=[])
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=d.app), base_url='http://localhost') as http:
                 response = await http.post('/api/chat/stream', json=body)
                 events = [json.loads(line) for line in response.text.splitlines()]

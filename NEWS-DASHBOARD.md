@@ -28,14 +28,41 @@ The **Ask Luna** panel directly below the summary streams replies from
 securities, latest displayed quotes, and up to 80 sampled bars per visible
 security with the full range's high and low. The backend adds its cached article
 metadata, analysis, date annotations, and MCP evidence. It does not fetch more
-article text or call new tools. Luna must acknowledge summary-only coverage,
+article text. Luna must acknowledge summary-only coverage,
 missing timestamps, and the difference between exposure and causation.
 
-Chat uses one Responses API call per question, low reasoning effort, a 1,600-token
-output limit, no retries, and `store=False`. The latest five completed turns are
+Chat uses one Responses API call for ordinary questions. Requests that need tools
+use one bounded tool round (at most four calls), followed by a second streamed
+answer with further calls disabled. Both requests use low reasoning effort, a
+1,600-token output limit, no retries, and `store=False`. Encrypted reasoning and
+output items from the first request accompany the tool results in the second.
+The latest five completed turns are
 sent with the next question. Conversation history lives only in page memory;
 selecting another story, clearing chat, or reloading removes it. Questions and
 dashboard context are sent to OpenAI. API credit-limit errors also appear in chat.
+
+### Chat tools
+
+| Example request | Tool | Result |
+| --- | --- | --- |
+| Add the FTSE 100 and make its line gold for the last month | `add_comparisons` | Checks MCP profile, quote, and history, then adds a card and percentage-change line with the requested colour and range. |
+| Remove the FTSE comparison | `remove_comparisons` | Removes chat-added tickers only; original article picks remain available. |
+| Show only XOM and FTSE for the last month | `set_chart_view` | Sets 1-, 5-, or 30-day range and visible tickers without fetching data. |
+| Make the FTSE line gold | `set_line_colour` | Changes the card, line, and legend using an eight-colour palette. |
+| Refresh the prices | `refresh_prices` | Reads MCP quotes and history; the 55-second cache and provider delays still apply. |
+| Show XOM's company profile | `get_security_profile` | Displays the latest requested profile below the chart and MCP checks. |
+
+`dashboard_tools.py` validates arguments against strict function schemas. There
+is no arbitrary code, CSS, browser navigation, or trading tool. Full price arrays
+go to the chart, while Luna receives compact MCP evidence. Failed ticker lookups
+do not add empty chart lines. Partial successes are reported in tool activity and
+the answer. The MCP checks widget includes checks requested through chat.
+
+The browser owns up to three added comparisons (eight securities total), visibility,
+range, line colours, and the displayed profile. Each question sends this bounded
+state to the server. Tool actions update only that visitor's page, never the shared
+article-analysis cache. Selecting another story or reloading resets chart additions
+and chat. Clearing chat removes the conversation, but keeps chart changes.
 
 `market_mcp.py` launches one local OpenMarkets stdio server using the Python MCP
 SDK v1. Docker installs the server during the build, so deployment startup does
